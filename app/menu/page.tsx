@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import db from '@/lib/db'
 import { PageHero } from '@/components/page-hero'
 import { MenuNav } from '@/components/menu/menu-nav'
 import { MenuSection } from '@/components/menu/menu-section'
@@ -10,7 +11,10 @@ export const metadata: Metadata = {
     'Explore our espresso bar, slow-brew and cold coffees, and bakery — all roasted and baked in-house.',
 }
 
+export const dynamic = 'force-dynamic'
+
 type MenuItem = {
+  id?: number
   name: string
   description: string
   price: string
@@ -26,24 +30,56 @@ type MenuCategory = {
 }
 
 async function getMenu(): Promise<MenuCategory[]> {
-  const baseUrl =
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    'http://localhost:3000'
-
   try {
-    const response = await fetch(`${baseUrl}/api/menu`, {
-      cache: 'no-store',
-    })
+    const { data: categories, error: categoryError } =
+      await db
+        .from('menu_categories')
+        .select('id, title, blurb, sort_order, is_visible')
+        .eq('is_visible', true)
+        .order('sort_order', { ascending: true })
 
-    if (!response.ok) {
-      throw new Error(
-        `Menu request failed: ${response.status}`,
-      )
+    if (categoryError) {
+      throw categoryError
     }
 
-    const data = await response.json()
+    const { data: items, error: itemError } =
+      await db
+        .from('menu_items')
+        .select(
+          'id, category_id, name, description, price, image, tag, sort_order, is_available'
+        )
+        .eq('is_available', true)
+        .order('sort_order', { ascending: true })
 
-    return data.menu ?? []
+    if (itemError) {
+      throw itemError
+    }
+
+    const menu: MenuCategory[] = (categories ?? []).map(
+      (category) => ({
+        id: String(category.id),
+        title: category.title,
+        blurb: category.blurb,
+        items: (items ?? [])
+          .filter(
+            (item) =>
+              String(item.category_id) ===
+              String(category.id)
+          )
+          .map((item) => ({
+            id: Number(item.id),
+            name: item.name,
+            description: item.description,
+            price: String(item.price),
+            image: item.image || undefined,
+            tag: item.tag || undefined,
+          })),
+      })
+    )
+
+    return menu.filter(
+      (category) => category.items.length > 0
+    )
   } catch (error) {
     console.error('Failed to fetch menu:', error)
     return []

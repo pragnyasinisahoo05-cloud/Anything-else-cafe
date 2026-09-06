@@ -1,4 +1,4 @@
-import { Analytics } from '@vercel/analytics/next'
+
 import type { Metadata, Viewport } from 'next'
 import { Fraunces, Geist } from 'next/font/google'
 import { Navbar } from '@/components/navbar'
@@ -50,7 +50,6 @@ export default function RootLayout({
         <Navbar />
         {children}
         <Footer />
-        {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
   )

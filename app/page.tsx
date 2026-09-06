@@ -7,6 +7,8 @@ import { GalleryPreview } from '@/components/home/gallery-preview'
 import { Testimonials } from '@/components/home/testimonials'
 import { CtaBand } from '@/components/cta-band'
 
+export const dynamic = 'force-dynamic'
+
 export default function HomePage() {
   return (
     <main>
@@ -29,3 +31,4 @@ export default function HomePage() {
     </main>
   )
 }
+
