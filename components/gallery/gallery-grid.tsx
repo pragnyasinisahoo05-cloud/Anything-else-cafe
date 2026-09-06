@@ -4,7 +4,6 @@ import Image from 'next/image'
 import { useCallback, useEffect, useState } from 'react'
 import { X, ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Reveal } from '@/components/reveal'
 import { gallery } from '@/lib/site'
 
 const spanClass: Record<string, string> = {
@@ -18,24 +17,31 @@ export function GalleryGrid() {
   const open = index !== null
 
   const close = useCallback(() => setIndex(null), [])
-  const prev = useCallback(
-    () => setIndex((i) => (i === null ? i : (i - 1 + gallery.length) % gallery.length)),
-    [],
-  )
-  const next = useCallback(
-    () => setIndex((i) => (i === null ? i : (i + 1) % gallery.length)),
-    [],
-  )
+
+  const prev = useCallback(() => {
+    setIndex((i) =>
+      i === null ? i : (i - 1 + gallery.length) % gallery.length,
+    )
+  }, [])
+
+  const next = useCallback(() => {
+    setIndex((i) =>
+      i === null ? i : (i + 1) % gallery.length,
+    )
+  }, [])
 
   useEffect(() => {
     if (!open) return
+
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') close()
       if (e.key === 'ArrowLeft') prev()
       if (e.key === 'ArrowRight') next()
     }
+
     document.addEventListener('keydown', onKey)
     document.body.style.overflow = 'hidden'
+
     return () => {
       document.removeEventListener('keydown', onKey)
       document.body.style.overflow = ''
@@ -46,11 +52,12 @@ export function GalleryGrid() {
     <>
       <div className="grid auto-rows-[220px] grid-cols-2 gap-4 sm:auto-rows-[260px] md:grid-cols-4">
         {gallery.map((shot, i) => (
-          <Reveal
+          <div
             key={shot.src}
-            variant="image"
-            delay={(i % 4) * 90}
-            className={cn('overflow-hidden rounded-xl', spanClass[shot.span])}
+            className={cn(
+              'overflow-hidden rounded-xl',
+              spanClass[shot.span],
+            )}
           >
             <button
               type="button"
@@ -65,12 +72,14 @@ export function GalleryGrid() {
                 sizes="(max-width: 768px) 50vw, 25vw"
                 className="object-cover transition-transform duration-[1.2s] ease-out group-hover:scale-110"
               />
+
               <span className="absolute inset-0 bg-primary/0 transition-colors duration-500 group-hover:bg-primary/30" />
+
               <span className="absolute bottom-4 left-4 translate-y-3 text-sm text-primary-foreground opacity-0 transition-all duration-500 group-hover:translate-y-0 group-hover:opacity-100">
                 View
               </span>
             </button>
-          </Reveal>
+          </div>
         ))}
       </div>
 
@@ -78,7 +87,9 @@ export function GalleryGrid() {
       <div
         className={cn(
           'fixed inset-0 z-[60] flex items-center justify-center bg-primary/95 p-4 backdrop-blur-sm transition-opacity duration-300',
-          open ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0',
+          open
+            ? 'pointer-events-auto opacity-100'
+            : 'pointer-events-none opacity-0',
         )}
         role="dialog"
         aria-modal="true"
@@ -92,6 +103,7 @@ export function GalleryGrid() {
         >
           <X className="h-5 w-5" />
         </button>
+
         <button
           type="button"
           onClick={prev}
@@ -100,6 +112,7 @@ export function GalleryGrid() {
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
+
         <button
           type="button"
           onClick={next}
@@ -121,6 +134,7 @@ export function GalleryGrid() {
                 className="object-contain"
               />
             </div>
+
             <figcaption className="mt-4 text-sm text-primary-foreground/70">
               {gallery[index].alt} — {index + 1} / {gallery.length}
             </figcaption>
