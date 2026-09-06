@@ -1,0 +1,184 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-fraunces), ui-serif, Georgia, serif;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+}
+
+:root {
+  color-scheme: light;
+  /* Warm ivory paper */
+  --background: oklch(0.972 0.012 82);
+  --foreground: oklch(0.26 0.028 52);
+
+  --card: oklch(0.985 0.008 84);
+  --card-foreground: oklch(0.26 0.028 52);
+
+  --popover: oklch(0.985 0.008 84);
+  --popover-foreground: oklch(0.26 0.028 52);
+
+  /* Deep espresso */
+  --primary: oklch(0.31 0.038 48);
+  --primary-foreground: oklch(0.97 0.012 82);
+
+  --secondary: oklch(0.93 0.018 78);
+  --secondary-foreground: oklch(0.31 0.038 48);
+
+  --muted: oklch(0.93 0.016 80);
+  --muted-foreground: oklch(0.52 0.03 58);
+
+  /* Honey amber */
+  --accent: oklch(0.74 0.13 66);
+  --accent-foreground: oklch(0.26 0.05 52);
+
+  --destructive: oklch(0.55 0.2 27);
+  --border: oklch(0.88 0.02 78);
+  --input: oklch(0.88 0.02 78);
+  --ring: oklch(0.74 0.13 66);
+
+  --radius: 0.5rem;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: 'ss01', 'cv01';
+  }
+  ::selection {
+    background: oklch(0.74 0.13 66 / 0.35);
+  }
+}
+
+/* ---------- Scroll reveal ---------- */
+@layer utilities {
+  .reveal {
+    opacity: 0;
+    transform: translateY(28px);
+    transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1),
+      transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: opacity, transform;
+  }
+  .reveal.is-visible {
+    opacity: 1;
+    transform: none;
+  }
+
+  .reveal-blur {
+    opacity: 0;
+    filter: blur(12px);
+    transform: translateY(20px) scale(0.98);
+    transition: opacity 1s ease, filter 1s ease, transform 1s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .reveal-blur.is-visible {
+    opacity: 1;
+    filter: blur(0);
+    transform: none;
+  }
+
+  /* Image cover reveal */
+  .img-reveal {
+    clip-path: inset(0 0 100% 0);
+    transition: clip-path 1.1s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .img-reveal.is-visible {
+    clip-path: inset(0 0 0 0);
+  }
+
+  .link-underline {
+    background-image: linear-gradient(currentColor, currentColor);
+    background-size: 0% 1px;
+    background-position: 0 100%;
+    background-repeat: no-repeat;
+    transition: background-size 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .link-underline:hover {
+    background-size: 100% 1px;
+  }
+
+  @keyframes marquee {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+  .animate-marquee {
+    animation: marquee 32s linear infinite;
+  }
+
+  @keyframes float-slow {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+  .animate-float-slow {
+    animation: float-slow 6s ease-in-out infinite;
+  }
+
+  @keyframes steam {
+    0% {
+      opacity: 0;
+      transform: translateY(0) scaleX(1);
+    }
+    50% {
+      opacity: 0.6;
+    }
+    100% {
+      opacity: 0;
+      transform: translateY(-40px) scaleX(1.4);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .reveal-blur,
+  .img-reveal {
+    opacity: 1 !important;
+    filter: none !important;
+    transform: none !important;
+    clip-path: none !important;
+  }
+  .animate-marquee,
+  .animate-float-slow {
+    animation: none !important;
+  }
+}
