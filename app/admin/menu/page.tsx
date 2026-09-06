@@ -135,13 +135,14 @@ export default function AdminMenuPage() {
   }
 
   function clearImageSelection() {
-    setSelectedImageName('')
-    setImagePreview('')
+  setSelectedImageName('')
+  setImagePreview('')
+  setItemImage('')
 
-    if (imageInputRef.current) {
-      imageInputRef.current.value = ''
-    }
+  if (imageInputRef.current) {
+    imageInputRef.current.value = ''
   }
+}
 
   function closeModal() {
     setModal(null)
