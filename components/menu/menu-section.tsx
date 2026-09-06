@@ -1,56 +1,47 @@
-import Image from 'next/image'
-import { Reveal } from '@/components/reveal'
 import type { MenuCategory } from '@/lib/site'
 
 export function MenuSection({ category }: { category: MenuCategory }) {
-  const featured = category.items.filter((item) => item.image)
-
   return (
     <section id={category.id} className="scroll-mt-28 py-16 md:py-20">
-      <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
+      <div className="mb-10 max-w-2xl">
+        <span className="text-xs uppercase tracking-[0.28em] text-accent">
+          {category.title}
+        </span>
 
-        {/* Left: heading + featured image */}
-        <div className="lg:sticky lg:top-28 lg:self-start">
-          <Reveal>
-            <span className="text-xs uppercase tracking-[0.28em] text-accent">
-              {category.title}
-            </span>
-          </Reveal>
+        <h2 className="mt-3 font-serif text-4xl leading-tight tracking-tight text-foreground md:text-5xl">
+          {category.title}
+        </h2>
 
-          <Reveal delay={70}>
-            <h2 className="mt-3 font-serif text-4xl leading-tight tracking-tight text-foreground md:text-5xl">
-              {category.title}
-            </h2>
-          </Reveal>
+        <p className="mt-4 max-w-xl text-pretty leading-relaxed text-muted-foreground">
+          {category.blurb}
+        </p>
+      </div>
 
-          <Reveal delay={140}>
-            <p className="mt-4 max-w-sm text-pretty leading-relaxed text-muted-foreground">
-              {category.blurb}
-            </p>
-          </Reveal>
-
-          {featured[0]?.image && (
-            <div className="mt-8 overflow-hidden rounded-2xl">
-              <div className="group relative aspect-[4/3] overflow-hidden">
-                <Image
-                  src={featured[0].image}
-                  alt={featured[0].name}
-                  fill
-                  sizes="(max-width: 1024px) 100vw, 40vw"
-                  className="object-cover transition-transform duration-[1.2s] ease-out group-hover:scale-105"
+      <div className="grid gap-6 sm:grid-cols-2">
+        {category.items.map((item) => (
+          <article
+            key={item.name}
+            className="group overflow-hidden rounded-2xl border border-border bg-card"
+          >
+            {/* Item image */}
+            <div className="relative aspect-[4/3] overflow-hidden bg-secondary">
+              {item.image ? (
+                <img
+                  src={item.image}
+                  alt={item.name}
+                  className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
                 />
-              </div>
+              ) : (
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                  No image
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* Right: item list */}
-        <ul className="divide-y divide-border">
-          {category.items.map((item, i) => (
-            <Reveal as="li" key={item.name} delay={i * 80}>
-              <div className="group flex items-baseline gap-4 py-6">
-
-                <div className="flex-1">
+            {/* Item information */}
+            <div className="p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-3">
                     <h3 className="font-serif text-xl text-foreground transition-colors duration-300 group-hover:text-accent md:text-2xl">
                       {item.name}
@@ -63,25 +54,18 @@ export function MenuSection({ category }: { category: MenuCategory }) {
                     )}
                   </div>
 
-                  <p className="mt-1.5 text-pretty text-sm leading-relaxed text-muted-foreground">
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                     {item.description}
                   </p>
                 </div>
 
-                <span
-                  className="hidden h-px flex-1 translate-y-[-4px] border-b border-dashed border-border sm:block"
-                  aria-hidden="true"
-                />
-
-                <span className="font-serif text-lg text-foreground">
+                <span className="shrink-0 font-serif text-lg text-foreground">
                   ₹{item.price}
                 </span>
-
               </div>
-            </Reveal>
-          ))}
-        </ul>
-
+            </div>
+          </article>
+        ))}
       </div>
     </section>
   )
