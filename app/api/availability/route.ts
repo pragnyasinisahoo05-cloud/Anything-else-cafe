@@ -8,23 +8,27 @@ const RESERVATION_DURATION_MINUTES = 90
 
 export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url)
+    const { searchParams } =
+      new URL(request.url)
 
-    const date = searchParams.get('date')
-    const time = searchParams.get('time')
+    const date =
+      searchParams.get('date')
 
-    // Basic validation
+    const time =
+      searchParams.get('time')
+
     if (!date || !time) {
       return NextResponse.json(
         {
-          error: 'Date and time are required.',
+          error:
+            'Date and time are required.',
         },
         { status: 400 }
       )
     }
 
-    // Validate time
-    const [hours, minutes] = time.split(':').map(Number)
+    const [hours, minutes] =
+      time.split(':').map(Number)
 
     if (
       !Number.isInteger(hours) ||
@@ -35,14 +39,11 @@ export async function GET(request: Request) {
       minutes > 59
     ) {
       return NextResponse.json(
-        {
-          error: 'Invalid time.',
-        },
+        { error: 'Invalid time.' },
         { status: 400 }
       )
     }
 
-    // Validate café hours
     if (hours < 8 || hours > 18) {
       return NextResponse.json(
         {
@@ -53,36 +54,52 @@ export async function GET(request: Request) {
       )
     }
 
-    const requestedStart = hours * 60 + minutes
+    const requestedStart =
+      hours * 60 + minutes
 
     const requestedEnd =
-      requestedStart + RESERVATION_DURATION_MINUTES
+      requestedStart +
+      RESERVATION_DURATION_MINUTES
 
-    // Get active reservations for this date
-    const existingBookings = db
-      .prepare(`
-        SELECT time, guests
-        FROM reservations
-        WHERE date = ?
-          AND status != 'cancelled'
-      `)
-      .all(date) as {
-      time: string
-      guests: number
-    }[]
+    const { data, error } =
+      await db
+        .from('reservations')
+        .select('time, guests')
+        .eq('date', date)
+        .neq('status', 'cancelled')
+
+    if (error) {
+      console.error(
+        'Availability database error:',
+        error
+      )
+
+      return NextResponse.json(
+        {
+          error:
+            'Unable to check availability.',
+        },
+        { status: 500 }
+      )
+    }
 
     let bookedSeats = 0
 
-    // Count only reservations overlapping this time
-    for (const booking of existingBookings) {
-      const [bookingHours, bookingMinutes] =
-        booking.time.split(':').map(Number)
+    for (const booking of data ?? []) {
+      const [
+        bookingHours,
+        bookingMinutes,
+      ] = booking.time
+        .split(':')
+        .map(Number)
 
       const bookingStart =
-        bookingHours * 60 + bookingMinutes
+        bookingHours * 60 +
+        bookingMinutes
 
       const bookingEnd =
-        bookingStart + RESERVATION_DURATION_MINUTES
+        bookingStart +
+        RESERVATION_DURATION_MINUTES
 
       const overlaps =
         requestedStart < bookingEnd &&
@@ -93,10 +110,11 @@ export async function GET(request: Request) {
       }
     }
 
-    const availableSeats = Math.max(
-      0,
-      MAX_CAPACITY - bookedSeats
-    )
+    const availableSeats =
+      Math.max(
+        0,
+        MAX_CAPACITY - bookedSeats
+      )
 
     return NextResponse.json({
       success: true,
@@ -105,14 +123,19 @@ export async function GET(request: Request) {
       capacity: MAX_CAPACITY,
       bookedSeats,
       availableSeats,
-      available: availableSeats > 0,
+      available:
+        availableSeats > 0,
     })
   } catch (error) {
-    console.error('Availability error:', error)
+    console.error(
+      'Availability error:',
+      error
+    )
 
     return NextResponse.json(
       {
-        error: 'Unable to check availability.',
+        error:
+          'Unable to check availability.',
       },
       { status: 500 }
     )

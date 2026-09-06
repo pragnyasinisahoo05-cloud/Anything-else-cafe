@@ -1,181 +1,149 @@
-// app/api/menu/upload/route.ts
-
 import { NextResponse } from 'next/server'
-import { promises as fs } from 'fs'
-import path from 'path'
-import crypto from 'crypto'
-import { isAdminAuthenticated } from '@/lib/admin-auth'
+import { v2 as cloudinary } from 'cloudinary'
+import {
+  isAdminAuthenticated,
+} from '@/lib/admin-auth'
 
 export const runtime = 'nodejs'
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5 MB
+cloudinary.config({
+  cloud_name:
+    process.env.CLOUDINARY_CLOUD_NAME,
+  api_key:
+    process.env.CLOUDINARY_API_KEY,
+  api_secret:
+    process.env.CLOUDINARY_API_SECRET,
+})
 
-const ALLOWED_TYPES = new Set([
+const MAX_FILE_SIZE =
+  5 * 1024 * 1024
+
+const ALLOWED_TYPES = [
   'image/jpeg',
   'image/png',
   'image/webp',
   'image/gif',
-])
+]
 
-const EXTENSIONS: Record<string, string> = {
-  'image/jpeg': '.jpg',
-  'image/png': '.png',
-  'image/webp': '.webp',
-  'image/gif': '.gif',
-}
-
-export async function POST(request: Request) {
+export async function POST(
+  request: Request
+) {
   try {
-    // --------------------------------
-    // Admin authentication
-    // --------------------------------
-
-    const authenticated = await isAdminAuthenticated()
+    const authenticated =
+      await isAdminAuthenticated()
 
     if (!authenticated) {
       return NextResponse.json(
-        {
-          error: 'Unauthorized',
-        },
-        {
-          status: 401,
-        }
+        { error: 'Unauthorized.' },
+        { status: 401 }
       )
     }
 
-    // --------------------------------
-    // Read form data
-    // --------------------------------
+    const formData =
+      await request.formData()
 
-    const formData = await request.formData()
-
-    const file = formData.get('file')
+    const file =
+      formData.get('file')
 
     if (!(file instanceof File)) {
       return NextResponse.json(
         {
-          error: 'No image file was provided.',
+          error:
+            'Please select an image.',
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       )
     }
 
-    // --------------------------------
-    // Validate file type
-    // --------------------------------
-
-    if (!ALLOWED_TYPES.has(file.type)) {
+    if (
+      !ALLOWED_TYPES.includes(
+        file.type
+      )
+    ) {
       return NextResponse.json(
         {
           error:
-            'Invalid image type. Please use JPG, PNG, WEBP, or GIF.',
+            'Only JPEG, PNG, WEBP and GIF images are allowed.',
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       )
     }
 
-    // --------------------------------
-    // Validate file size
-    // --------------------------------
-
-    if (file.size > MAX_FILE_SIZE) {
+    if (
+      file.size > MAX_FILE_SIZE
+    ) {
       return NextResponse.json(
         {
           error:
-            'Image is too large. Maximum allowed size is 5 MB.',
+            'Image must be smaller than 5MB.',
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       )
     }
 
-    if (file.size === 0) {
-      return NextResponse.json(
-        {
-          error: 'The selected image is empty.',
-        },
-        {
-          status: 400,
-        }
+    const buffer =
+      Buffer.from(
+        await file.arrayBuffer()
       )
-    }
 
-    // --------------------------------
-    // Create upload directory
-    // --------------------------------
+    const uploadResult =
+      await new Promise<{
+        secure_url: string
+        public_id: string
+      }>((resolve, reject) => {
+        const uploadStream =
+          cloudinary.uploader.upload_stream(
+            {
+              folder:
+                'anything-else-cafe/menu',
+              resource_type: 'image',
+            },
+            (error, result) => {
+              if (error) {
+                reject(error)
+                return
+              }
 
-    const uploadDirectory = path.join(
-      process.cwd(),
-      'public',
-      'images',
-      'menu'
-    )
+              if (!result) {
+                reject(
+                  new Error(
+                    'Cloudinary upload failed.'
+                  )
+                )
+                return
+              }
 
-    await fs.mkdir(uploadDirectory, {
-      recursive: true,
-    })
+              resolve({
+                secure_url:
+                  result.secure_url,
+                public_id:
+                  result.public_id,
+              })
+            }
+          )
 
-    // --------------------------------
-    // Generate safe unique filename
-    // --------------------------------
-
-    const extension =
-      EXTENSIONS[file.type] || '.jpg'
-
-    const randomName =
-      crypto.randomBytes(16).toString('hex')
-
-    const filename =
-      `menu-${Date.now()}-${randomName}${extension}`
-
-    const filePath = path.join(
-      uploadDirectory,
-      filename
-    )
-
-    // --------------------------------
-    // Write file
-    // --------------------------------
-
-    const buffer = Buffer.from(
-      await file.arrayBuffer()
-    )
-
-    await fs.writeFile(
-      filePath,
-      buffer
-    )
-
-    // --------------------------------
-    // Public image URL
-    // --------------------------------
-
-    const imageUrl =
-      `/images/menu/${filename}`
+        uploadStream.end(buffer)
+      })
 
     return NextResponse.json({
       success: true,
-      imageUrl,
+      imageUrl:
+        uploadResult.secure_url,
+      publicId:
+        uploadResult.public_id,
     })
   } catch (error) {
     console.error(
-      'Menu image upload error:',
+      'Cloudinary upload error:',
       error
     )
 
     return NextResponse.json(
       {
         error:
-          'Something went wrong while uploading the image.',
+          'Unable to upload image.',
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     )
   }
 }

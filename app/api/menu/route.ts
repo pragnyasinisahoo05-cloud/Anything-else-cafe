@@ -12,28 +12,26 @@ export const runtime = 'nodejs'
 
 export async function GET() {
   try {
-    const categories = db
-      .prepare(`
-        SELECT
+    const { data: categories, error: categoriesError } =
+      await db
+        .from('menu_categories')
+        .select(`
           id,
           title,
           blurb,
           sort_order,
           is_visible
-        FROM menu_categories
-        ORDER BY sort_order ASC
-      `)
-      .all() as {
-        id: string
-        title: string
-        blurb: string
-        sort_order: number
-        is_visible: number
-      }[]
+        `)
+        .order('sort_order', { ascending: true })
 
-    const items = db
-      .prepare(`
-        SELECT
+    if (categoriesError) {
+      throw categoriesError
+    }
+
+    const { data: items, error: itemsError } =
+      await db
+        .from('menu_items')
+        .select(`
           id,
           category_id,
           name,
@@ -43,30 +41,25 @@ export async function GET() {
           tag,
           sort_order,
           is_available
-        FROM menu_items
-        ORDER BY sort_order ASC
-      `)
-      .all() as {
-        id: number
-        category_id: string
-        name: string
-        description: string
-        price: string
-        image: string | null
-        tag: string | null
-        sort_order: number
-        is_available: number
-      }[]
+        `)
+        .order('sort_order', { ascending: true })
+
+    if (itemsError) {
+      throw itemsError
+    }
+
+    const safeCategories = categories ?? []
+    const safeItems = items ?? []
 
     // ---------------------------------------------
     // Full menu for admin
     // ---------------------------------------------
 
-    const adminMenu = categories.map(
+    const adminMenu = safeCategories.map(
       (category) => ({
         ...category,
 
-        items: items.filter(
+        items: safeItems.filter(
           (item) =>
             item.category_id === category.id
         ),
@@ -81,30 +74,31 @@ export async function GET() {
     // ---------------------------------------------
 
     const customerMenu =
-      categories
+      safeCategories
         .filter(
           (category) =>
-            category.is_visible === 1
+            Number(category.is_visible) === 1
         )
         .map((category) => ({
           id: category.id,
           title: category.title,
           blurb: category.blurb,
 
-          items: items
+          items: safeItems
             .filter(
               (item) =>
                 item.category_id ===
                   category.id &&
-                item.is_available === 1
+                Number(item.is_available) === 1
             )
             .map((item) => ({
               name: item.name,
-              description:
-                item.description,
+              description: item.description,
               price: item.price,
-              image: item.image || undefined,
-              tag: item.tag || undefined,
+              image:
+                item.image || undefined,
+              tag:
+                item.tag || undefined,
             })),
         }))
         .filter(
@@ -207,16 +201,19 @@ export async function POST(
         id = `category-${Date.now()}`
       }
 
-      const existing =
-        db
-          .prepare(`
-            SELECT id
-            FROM menu_categories
-            WHERE id = ?
-          `)
-          .get(id)
+      // Check duplicate category ID
+      const { data: existingCategory, error: existingError } =
+        await db
+          .from('menu_categories')
+          .select('id')
+          .eq('id', id)
+          .maybeSingle()
 
-      if (existing) {
+      if (existingError) {
+        throw existingError
+      }
+
+      if (existingCategory) {
         return NextResponse.json(
           {
             error:
@@ -228,35 +225,42 @@ export async function POST(
         )
       }
 
-      const sortResult =
-        db
-          .prepare(`
-            SELECT
-              COALESCE(
-                MAX(sort_order),
-                -1
-              ) + 1 AS next_sort
-            FROM menu_categories
-          `)
-          .get() as {
-            next_sort: number
-          }
+      // Get next sort order
+      const { data: categories, error: sortError } =
+        await db
+          .from('menu_categories')
+          .select('sort_order')
+          .order('sort_order', {
+            ascending: false,
+          })
+          .limit(1)
 
-      db.prepare(`
-        INSERT INTO menu_categories (
-          id,
-          title,
-          blurb,
-          sort_order,
-          is_visible
-        )
-        VALUES (?, ?, ?, ?, 1)
-      `).run(
-        id,
-        title,
-        blurb,
-        sortResult.next_sort
-      )
+      if (sortError) {
+        throw sortError
+      }
+
+      const nextSort =
+        categories &&
+        categories.length > 0
+          ? Number(
+              categories[0].sort_order
+            ) + 1
+          : 0
+
+      const { error: insertError } =
+        await db
+          .from('menu_categories')
+          .insert({
+            id,
+            title,
+            blurb,
+            sort_order: nextSort,
+            is_visible: 1,
+          })
+
+      if (insertError) {
+        throw insertError
+      }
 
       return NextResponse.json({
         success: true,
@@ -318,14 +322,19 @@ export async function POST(
         )
       }
 
-      const category =
-        db
-          .prepare(`
-            SELECT id
-            FROM menu_categories
-            WHERE id = ?
-          `)
-          .get(categoryId)
+      // Check category
+      const {
+        data: category,
+        error: categoryError,
+      } = await db
+        .from('menu_categories')
+        .select('id')
+        .eq('id', categoryId)
+        .maybeSingle()
+
+      if (categoryError) {
+        throw categoryError
+      }
 
       if (!category) {
         return NextResponse.json(
@@ -339,47 +348,56 @@ export async function POST(
         )
       }
 
-      const sortResult =
-        db
-          .prepare(`
-            SELECT
-              COALESCE(
-                MAX(sort_order),
-                -1
-              ) + 1 AS next_sort
-            FROM menu_items
-            WHERE category_id = ?
-          `)
-          .get(categoryId) as {
-            next_sort: number
-          }
+      // Get next sort order for this category
+      const {
+        data: categoryItems,
+        error: sortError,
+      } = await db
+        .from('menu_items')
+        .select('sort_order')
+        .eq('category_id', categoryId)
+        .order('sort_order', {
+          ascending: false,
+        })
+        .limit(1)
 
-      const result =
-        db.prepare(`
-          INSERT INTO menu_items (
-            category_id,
-            name,
-            description,
-            price,
-            image,
-            tag,
-            sort_order,
-            is_available
-          )
-          VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-        `).run(
-          categoryId,
+      if (sortError) {
+        throw sortError
+      }
+
+      const nextSort =
+        categoryItems &&
+        categoryItems.length > 0
+          ? Number(
+              categoryItems[0].sort_order
+            ) + 1
+          : 0
+
+      const {
+        data: insertedItem,
+        error: insertError,
+      } = await db
+        .from('menu_items')
+        .insert({
+          category_id: categoryId,
           name,
           description,
           price,
           image,
           tag,
-          sortResult.next_sort
-        )
+          sort_order: nextSort,
+          is_available: 1,
+        })
+        .select('id')
+        .single()
+
+      if (insertError) {
+        throw insertError
+      }
 
       return NextResponse.json({
         success: true,
-        id: result.lastInsertRowid,
+        id: insertedItem.id,
       })
     }
 
@@ -440,9 +458,6 @@ export async function PATCH(
 
     // =============================================
     // UPDATE CATEGORY
-    //
-    // IMPORTANT:
-    // We validate ONLY category fields here.
     // =============================================
 
     if (type === 'category') {
@@ -478,16 +493,21 @@ export async function PATCH(
         )
       }
 
-      const existing =
-        db
-          .prepare(`
-            SELECT id
-            FROM menu_categories
-            WHERE id = ?
-          `)
-          .get(id)
+      // Check category exists
+      const {
+        data: existingCategory,
+        error: existingError,
+      } = await db
+        .from('menu_categories')
+        .select('id')
+        .eq('id', id)
+        .maybeSingle()
 
-      if (!existing) {
+      if (existingError) {
+        throw existingError
+      }
+
+      if (!existingCategory) {
         return NextResponse.json(
           {
             error:
@@ -499,19 +519,19 @@ export async function PATCH(
         )
       }
 
-      db.prepare(`
-        UPDATE menu_categories
-        SET
-          title = ?,
-          blurb = ?,
-          is_visible = ?
-        WHERE id = ?
-      `).run(
-        title,
-        blurb,
-        isVisible,
-        id
-      )
+      const { error: updateError } =
+        await db
+          .from('menu_categories')
+          .update({
+            title,
+            blurb,
+            is_visible: isVisible,
+          })
+          .eq('id', id)
+
+      if (updateError) {
+        throw updateError
+      }
 
       return NextResponse.json({
         success: true,
@@ -520,9 +540,6 @@ export async function PATCH(
 
     // =============================================
     // UPDATE ITEM
-    //
-    // IMPORTANT:
-    // We validate item fields ONLY here.
     // =============================================
 
     if (type === 'item') {
@@ -584,14 +601,19 @@ export async function PATCH(
         )
       }
 
-      const category =
-        db
-          .prepare(`
-            SELECT id
-            FROM menu_categories
-            WHERE id = ?
-          `)
-          .get(categoryId)
+      // Check category
+      const {
+        data: category,
+        error: categoryError,
+      } = await db
+        .from('menu_categories')
+        .select('id')
+        .eq('id', categoryId)
+        .maybeSingle()
+
+      if (categoryError) {
+        throw categoryError
+      }
 
       if (!category) {
         return NextResponse.json(
@@ -605,14 +627,19 @@ export async function PATCH(
         )
       }
 
-      const existingItem =
-        db
-          .prepare(`
-            SELECT id
-            FROM menu_items
-            WHERE id = ?
-          `)
-          .get(id)
+      // Check item exists
+      const {
+        data: existingItem,
+        error: existingError,
+      } = await db
+        .from('menu_items')
+        .select('id')
+        .eq('id', id)
+        .maybeSingle()
+
+      if (existingError) {
+        throw existingError
+      }
 
       if (!existingItem) {
         return NextResponse.json(
@@ -626,27 +653,23 @@ export async function PATCH(
         )
       }
 
-      db.prepare(`
-        UPDATE menu_items
-        SET
-          category_id = ?,
-          name = ?,
-          description = ?,
-          price = ?,
-          image = ?,
-          tag = ?,
-          is_available = ?
-        WHERE id = ?
-      `).run(
-        categoryId,
-        name,
-        description,
-        price,
-        image,
-        tag,
-        isAvailable,
-        id
-      )
+      const { error: updateError } =
+        await db
+          .from('menu_items')
+          .update({
+            category_id: categoryId,
+            name,
+            description,
+            price,
+            image,
+            tag,
+            is_available: isAvailable,
+          })
+          .eq('id', id)
+
+      if (updateError) {
+        throw updateError
+      }
 
       return NextResponse.json({
         success: true,
@@ -743,15 +766,21 @@ export async function DELETE(
         )
       }
 
-      const result =
-        db
-          .prepare(`
-            DELETE FROM menu_items
-            WHERE id = ?
-          `)
-          .run(itemId)
+      const {
+        data: deletedItem,
+        error: deleteError,
+      } = await db
+        .from('menu_items')
+        .delete()
+        .eq('id', itemId)
+        .select('id')
+        .maybeSingle()
 
-      if (result.changes === 0) {
+      if (deleteError) {
+        throw deleteError
+      }
+
+      if (!deletedItem) {
         return NextResponse.json(
           {
             error:
@@ -776,25 +805,49 @@ export async function DELETE(
       const categoryId =
         id.trim()
 
-      const deleteCategory =
-        db.transaction(() => {
-          db.prepare(`
-            DELETE FROM menu_items
-            WHERE category_id = ?
-          `).run(categoryId)
+      if (!categoryId) {
+        return NextResponse.json(
+          {
+            error:
+              'Invalid category ID.',
+          },
+          {
+            status: 400,
+          }
+        )
+      }
 
-          return db
-            .prepare(`
-              DELETE FROM menu_categories
-              WHERE id = ?
-            `)
-            .run(categoryId)
-        })
+      // Delete items first.
+      // This mirrors the old SQLite transaction.
+      const {
+        error: itemsDeleteError,
+      } = await db
+        .from('menu_items')
+        .delete()
+        .eq(
+          'category_id',
+          categoryId
+        )
 
-      const result =
-        deleteCategory()
+      if (itemsDeleteError) {
+        throw itemsDeleteError
+      }
 
-      if (result.changes === 0) {
+      const {
+        data: deletedCategory,
+        error: categoryDeleteError,
+      } = await db
+        .from('menu_categories')
+        .delete()
+        .eq('id', categoryId)
+        .select('id')
+        .maybeSingle()
+
+      if (categoryDeleteError) {
+        throw categoryDeleteError
+      }
+
+      if (!deletedCategory) {
         return NextResponse.json(
           {
             error:

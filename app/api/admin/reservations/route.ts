@@ -3,7 +3,6 @@ import db from '@/lib/db'
 
 export const runtime = 'nodejs'
 
-const MAX_CAPACITY = 20
 const RESERVATION_DURATION_MINUTES = 90
 const OPENING_HOUR = 8
 const CLOSING_HOUR = 18
@@ -35,15 +34,19 @@ export async function POST(request: Request) {
       special_request,
     } = body
 
-    // Required fields
-    if (!name || !email || !date || !time || guests === undefined) {
+    if (
+      !name ||
+      !email ||
+      !date ||
+      !time ||
+      guests === undefined
+    ) {
       return NextResponse.json(
         { error: 'Please fill in all required fields.' },
         { status: 400 }
       )
     }
 
-    // Basic string validation
     if (
       typeof name !== 'string' ||
       typeof email !== 'string' ||
@@ -56,7 +59,6 @@ export async function POST(request: Request) {
       )
     }
 
-    // Guest validation
     const guestCount = Number(guests)
 
     if (
@@ -70,7 +72,6 @@ export async function POST(request: Request) {
       )
     }
 
-    // Date/time format validation
     if (!isValidDate(date) || !isValidTime(time)) {
       return NextResponse.json(
         { error: 'Invalid date or time.' },
@@ -79,11 +80,10 @@ export async function POST(request: Request) {
     }
 
     const reservationMinutes = timeToMinutes(time)
+
     const openingMinutes = OPENING_HOUR * 60
     const closingMinutes = CLOSING_HOUR * 60
 
-    // Reservation must start during opening hours
-    // and finish before closing
     if (
       reservationMinutes < openingMinutes ||
       reservationMinutes + RESERVATION_DURATION_MINUTES >
@@ -98,171 +98,97 @@ export async function POST(request: Request) {
       )
     }
 
-    // Make sure reservation is in the future
     const reservationDateTime = new Date(
       `${date}T${time}:00`
     )
 
-    if (Number.isNaN(reservationDateTime.getTime())) {
+    if (
+      Number.isNaN(reservationDateTime.getTime())
+    ) {
       return NextResponse.json(
-        { error: 'Invalid reservation date or time.' },
+        {
+          error:
+            'Invalid reservation date or time.',
+        },
         { status: 400 }
       )
     }
 
     if (reservationDateTime <= new Date()) {
       return NextResponse.json(
-        { error: 'Please choose a future date and time.' },
+        {
+          error:
+            'Please choose a future date and time.',
+        },
         { status: 400 }
       )
     }
 
-    // Basic email validation
     const emailPattern =
       /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
     if (!emailPattern.test(email.trim())) {
       return NextResponse.json(
-        { error: 'Please enter a valid email address.' },
+        {
+          error:
+            'Please enter a valid email address.',
+        },
         { status: 400 }
       )
     }
 
-    // Transaction prevents race conditions between
-    // capacity check and insertion.
-    const createReservation = db.transaction(() => {
-      const requestedStart = reservationMinutes
-      const requestedEnd =
-        requestedStart + RESERVATION_DURATION_MINUTES
-
-      const existingReservations = db
-        .prepare(`
-          SELECT time, guests
-          FROM reservations
-          WHERE date = ?
-            AND status != 'cancelled'
-        `)
-        .all(date) as {
-        time: string
-        guests: number
-      }[]
-
-      let bookedSeats = 0
-
-      for (const reservation of existingReservations) {
-        const existingStart =
-          timeToMinutes(reservation.time)
-
-        const existingEnd =
-          existingStart + RESERVATION_DURATION_MINUTES
-
-        const overlaps =
-          requestedStart < existingEnd &&
-          requestedEnd > existingStart
-
-        if (overlaps) {
-          bookedSeats += reservation.guests
-        }
-      }
-
-      if (
-        bookedSeats + guestCount >
-        MAX_CAPACITY
-      ) {
-        throw new Error(
-          'NOT_ENOUGH_CAPACITY'
-        )
-      }
-
-      // Prevent exact duplicate booking
-      const duplicate = db
-        .prepare(`
-          SELECT id
-          FROM reservations
-          WHERE email = ?
-            AND date = ?
-            AND time = ?
-            AND status != 'cancelled'
-          LIMIT 1
-        `)
-        .get(
-          email.trim().toLowerCase(),
-          date,
-          time
-        )
-
-      if (duplicate) {
-        throw new Error(
-          'DUPLICATE_RESERVATION'
-        )
-      }
-
-      const result = db
-        .prepare(`
-          INSERT INTO reservations (
-            name,
-            email,
-            phone,
-            date,
-            time,
-            guests,
-            special_request,
-            status
-          )
-          VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
-        `)
-        .run(
-          name.trim(),
-          email.trim().toLowerCase(),
+    const { data, error } = await db.rpc(
+      'create_reservation',
+      {
+        p_name: name.trim(),
+        p_email: email.trim().toLowerCase(),
+        p_phone:
           typeof phone === 'string'
             ? phone.trim()
             : null,
-          date,
-          time,
-          guestCount,
+        p_date: date,
+        p_time: time,
+        p_guests: guestCount,
+        p_special_request:
           typeof special_request === 'string'
             ? special_request.trim()
-            : null
-        )
-
-      return result.lastInsertRowid
-    })
-
-    let reservationId: number | bigint
-
-    try {
-      reservationId =
-        createReservation()
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message ===
-          'NOT_ENOUGH_CAPACITY'
-      ) {
-        return NextResponse.json(
-          {
-            error:
-              'Sorry, there are not enough seats available for this time.',
-          },
-          { status: 409 }
-        )
+            : null,
       }
+    )
 
-      if (
-        error instanceof Error &&
-        error.message ===
-          'DUPLICATE_RESERVATION'
-      ) {
-        return NextResponse.json(
-          {
-            error:
-              'A reservation with this email, date and time already exists.',
-          },
-          { status: 409 }
-        )
-      }
+    if (error) {
+      console.error(
+        'Supabase reservation error:',
+        error
+      )
 
-      throw error
+      return NextResponse.json(
+        {
+          error:
+            'Unable to create reservation. Please try again.',
+        },
+        { status: 500 }
+      )
+    }
+
+    if (data?.code === 'NOT_ENOUGH_CAPACITY') {
+      return NextResponse.json(
+        {
+          error:
+            'Sorry, there are not enough seats available for this time.',
+        },
+        { status: 409 }
+      )
+    }
+
+    if (data?.code === 'DUPLICATE_RESERVATION') {
+      return NextResponse.json(
+        {
+          error:
+            'A reservation with this email, date and time already exists.',
+        },
+        { status: 409 }
+      )
     }
 
     return NextResponse.json(
@@ -270,7 +196,9 @@ export async function POST(request: Request) {
         success: true,
         message:
           'Reservation submitted successfully.',
-        reservationId: Number(reservationId),
+        reservationId: Number(
+          data.reservationId
+        ),
       },
       { status: 201 }
     )

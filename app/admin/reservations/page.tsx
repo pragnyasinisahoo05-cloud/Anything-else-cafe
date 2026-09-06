@@ -108,7 +108,7 @@ export default async function AdminReservationsPage({
     ? period
     : undefined
 
-  // --------------------------------
+    // --------------------------------
   // Sorting
   // --------------------------------
 
@@ -128,89 +128,192 @@ export default async function AdminReservationsPage({
       ? 'DESC'
       : 'ASC'
 
-  const sortColumnMap: Record<string, string> = {
-    date: 'date',
-    time: 'time',
-    guests: 'guests',
-    created_at: 'created_at',
+  // --------------------------------
+  // Get reservations from Supabase
+  // --------------------------------
+
+  const { data: rawReservations, error: reservationsError } =
+    await db
+      .from('reservations')
+      .select(`
+        id,
+        name,
+        email,
+        phone,
+        date,
+        time,
+        guests,
+        special_request,
+        status,
+        created_at
+      `)
+
+  if (reservationsError) {
+    console.error(
+      'Failed to load reservations:',
+      reservationsError
+    )
+
+    throw new Error(
+      'Failed to load reservations.'
+    )
   }
 
-  const sortColumn =
-    sortColumnMap[selectedSort || 'date']
+  const databaseReservations: Reservation[] =
+    (rawReservations ?? []).map((reservation) => ({
+      id: Number(reservation.id),
+      name: reservation.name,
+      email: reservation.email,
+      phone: reservation.phone,
+      date: reservation.date,
+      time: String(reservation.time).slice(0, 5),
+      guests: Number(reservation.guests),
+      special_request:
+        reservation.special_request,
+      status: reservation.status,
+      created_at:
+        reservation.created_at,
+    }))
 
   // --------------------------------
-  // Build filtered query
+  // Filter reservations
   // --------------------------------
 
-  let whereQuery = `
-    FROM reservations
-    WHERE 1 = 1
-  `
-
-  const queryParams: string[] = []
+  let filteredReservations =
+    databaseReservations
 
   // Status
 
   if (selectedStatus) {
-    whereQuery += ` AND status = ?`
-    queryParams.push(selectedStatus)
+    filteredReservations =
+      filteredReservations.filter(
+        (reservation) =>
+          reservation.status ===
+          selectedStatus
+      )
   }
 
-  // Date
+  // Date / Period
 
   if (date) {
-    whereQuery += ` AND date = ?`
-    queryParams.push(date)
-  } else if (selectedPeriod === 'today') {
-    whereQuery += ` AND date = ?`
-    queryParams.push(todayString)
-  } else if (selectedPeriod === 'upcoming') {
-    whereQuery += ` AND date >= ?`
-    queryParams.push(todayString)
-  } else if (selectedPeriod === 'past') {
-    whereQuery += ` AND date < ?`
-    queryParams.push(todayString)
+    filteredReservations =
+      filteredReservations.filter(
+        (reservation) =>
+          reservation.date === date
+      )
+  } else if (
+    selectedPeriod === 'today'
+  ) {
+    filteredReservations =
+      filteredReservations.filter(
+        (reservation) =>
+          reservation.date ===
+          todayString
+      )
+  } else if (
+    selectedPeriod === 'upcoming'
+  ) {
+    filteredReservations =
+      filteredReservations.filter(
+        (reservation) =>
+          reservation.date >=
+          todayString
+      )
+  } else if (
+    selectedPeriod === 'past'
+  ) {
+    filteredReservations =
+      filteredReservations.filter(
+        (reservation) =>
+          reservation.date <
+          todayString
+      )
   }
 
   // Search
 
   if (search) {
-    whereQuery += `
-      AND (
-        name LIKE ?
-        OR email LIKE ?
-        OR phone LIKE ?
+    const searchValue =
+      search.toLowerCase().trim()
+
+    filteredReservations =
+      filteredReservations.filter(
+        (reservation) =>
+          reservation.name
+            .toLowerCase()
+            .includes(searchValue) ||
+          reservation.email
+            .toLowerCase()
+            .includes(searchValue) ||
+          (reservation.phone || '')
+            .toLowerCase()
+            .includes(searchValue)
       )
-    `
-
-    const searchValue = `%${search}%`
-
-    queryParams.push(
-      searchValue,
-      searchValue,
-      searchValue
-    )
   }
+
+  // --------------------------------
+  // Sort reservations
+  // --------------------------------
+
+  filteredReservations.sort(
+    (a, b) => {
+      let comparison = 0
+
+      if (selectedSort === 'date') {
+        comparison =
+          a.date.localeCompare(
+            b.date
+          )
+
+        if (comparison === 0) {
+          comparison =
+            a.time.localeCompare(
+              b.time
+            )
+        }
+      } else if (
+        selectedSort === 'time'
+      ) {
+        comparison =
+          a.time.localeCompare(
+            b.time
+          )
+      } else if (
+        selectedSort === 'guests'
+      ) {
+        comparison =
+          a.guests - b.guests
+      } else if (
+        selectedSort ===
+        'created_at'
+      ) {
+        comparison =
+          new Date(
+            a.created_at
+          ).getTime() -
+          new Date(
+            b.created_at
+          ).getTime()
+      }
+
+      return selectedOrder === 'DESC'
+        ? -comparison
+        : comparison
+    }
+  )
 
   // --------------------------------
   // Total filtered reservations
   // --------------------------------
 
-  const totalResult = db
-    .prepare(`
-      SELECT COUNT(*) as count
-      ${whereQuery}
-    `)
-    .get(...queryParams) as {
-      count: number
-    }
-
-  const totalReservations = totalResult.count
+  const totalReservations =
+    filteredReservations.length
 
   const totalPages = Math.max(
     1,
     Math.ceil(
-      totalReservations / itemsPerPage
+      totalReservations /
+        itemsPerPage
     )
   )
 
@@ -227,52 +330,26 @@ export default async function AdminReservationsPage({
   // Get paginated reservations
   // --------------------------------
 
-  const reservations = db
-    .prepare(`
-      SELECT
-        id,
-        name,
-        email,
-        phone,
-        date,
-        time,
-        guests,
-        special_request,
-        status,
-        created_at
-      ${whereQuery}
-      ORDER BY
-        ${sortColumn}
-        ${selectedOrder}
-      LIMIT ? OFFSET ?
-    `)
-    .all(
-      ...queryParams,
-      itemsPerPage,
-      offset
-    ) as Reservation[]
+  const reservations =
+    filteredReservations.slice(
+      offset,
+      offset + itemsPerPage
+    )
 
   // --------------------------------
   // Dashboard stats
   // --------------------------------
 
-  const allReservations = db
-    .prepare(`
-      SELECT
-        id,
-        date,
-        time,
-        guests,
-        status
-      FROM reservations
-    `)
-    .all() as {
-      id: number
-      date: string
-      time: string
-      guests: number
-      status: string
-    }[]
+  const allReservations =
+    databaseReservations.map(
+      (reservation) => ({
+        id: reservation.id,
+        date: reservation.date,
+        time: reservation.time,
+        guests: reservation.guests,
+        status: reservation.status,
+      })
+    )
 
   const totalCount =
     allReservations.length
@@ -280,45 +357,54 @@ export default async function AdminReservationsPage({
   const todayCount =
     allReservations.filter(
       (reservation) =>
-        reservation.date === todayString
+        reservation.date ===
+        todayString
     ).length
 
   const todayGuests =
     allReservations
       .filter(
         (reservation) =>
-          reservation.date === todayString &&
-          reservation.status !== 'cancelled'
+          reservation.date ===
+            todayString &&
+          reservation.status !==
+            'cancelled'
       )
       .reduce(
         (total, reservation) =>
-          total + reservation.guests,
+          total +
+          reservation.guests,
         0
       )
 
   const upcomingCount =
     allReservations.filter(
       (reservation) =>
-        reservation.date > todayString &&
-        reservation.status !== 'cancelled'
+        reservation.date >
+          todayString &&
+        reservation.status !==
+          'cancelled'
     ).length
 
   const pendingCount =
     allReservations.filter(
       (reservation) =>
-        reservation.status === 'pending'
+        reservation.status ===
+        'pending'
     ).length
 
   const confirmedCount =
     allReservations.filter(
       (reservation) =>
-        reservation.status === 'confirmed'
+        reservation.status ===
+        'confirmed'
     ).length
 
   const cancelledCount =
     allReservations.filter(
       (reservation) =>
-        reservation.status === 'cancelled'
+        reservation.status ===
+        'cancelled'
     ).length
 
   // --------------------------------

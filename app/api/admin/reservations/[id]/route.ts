@@ -17,20 +17,16 @@ export async function PATCH(
   }
 ) {
   try {
-    // Check admin authentication
     const authenticated =
       await isAdminAuthenticated()
 
     if (!authenticated) {
       return NextResponse.json(
-        {
-          error: 'Unauthorized.',
-        },
+        { error: 'Unauthorized.' },
         { status: 401 }
       )
     }
 
-    // Get reservation ID
     const { id } = await params
 
     const reservationId =
@@ -51,14 +47,12 @@ export async function PATCH(
       )
     }
 
-    // Read request body
     const body =
       await request.json()
 
     const status =
       body.status
 
-    // Only confirmed/cancelled allowed
     if (
       ![
         'confirmed',
@@ -74,23 +68,32 @@ export async function PATCH(
       )
     }
 
-    // Update reservation
-    const result =
-      db
-        .prepare(`
-          UPDATE reservations
-          SET status = ?
-          WHERE id = ?
-        `)
-        .run(
+    const { data, error } =
+      await db
+        .from('reservations')
+        .update({
           status,
-          reservationId
-        )
+        })
+        .eq('id', reservationId)
+        .select('id')
+        .maybeSingle()
 
-    // Reservation not found
-    if (
-      result.changes === 0
-    ) {
+    if (error) {
+      console.error(
+        'Reservation update error:',
+        error
+      )
+
+      return NextResponse.json(
+        {
+          error:
+            'Unable to update reservation.',
+        },
+        { status: 500 }
+      )
+    }
+
+    if (!data) {
       return NextResponse.json(
         {
           error:
